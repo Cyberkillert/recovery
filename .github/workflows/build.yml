@@ -1,0 +1,590 @@
+name: RMX3660 Recovery Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+
+      recovery:
+        description: "Select recovery"
+        required: true
+        type: choice
+        default: TWRP
+        options:
+          - TWRP
+          - OrangeFox
+          - SHARP
+          - PitchBlack
+
+      target:
+        description: "Image target"
+        required: true
+        type: choice
+        default: vendor_boot
+        options:
+          - vendor_boot
+          - recovery
+
+      clean:
+        description: "Clean build"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+
+  build:
+    name: ${{ inputs.recovery }} - RMX3660
+    runs-on: ubuntu-24.04
+
+    env:
+      DEVICE: luigi
+      DEVICE_PATH: device/realme/luigi
+      COMMON_PATH: device/realme/sm6375-common
+      KERNEL_PATH: kernel/realme/sm6375
+      RECOVERY: ${{ inputs.recovery }}
+      TARGET: ${{ inputs.target }}
+
+    steps:
+
+      # --------------------------------------------------
+      # CHECKOUT
+      # --------------------------------------------------
+
+      - name: Checkout builder
+        uses: actions/checkout@v4
+
+
+      # --------------------------------------------------
+      # DEPENDENCIES
+      # --------------------------------------------------
+
+      - name: Install dependencies
+        run: |
+
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            adb \
+            bc \
+            bison \
+            build-essential \
+            ccache \
+            clang \
+            curl \
+            flex \
+            g++-multilib \
+            gcc-multilib \
+            git \
+            gnupg \
+            gperf \
+            imagemagick \
+            lib32ncurses-dev \
+            lib32readline-dev \
+            lib32z1-dev \
+            libelf-dev \
+            liblz4-tool \
+            libncurses-dev \
+            libssl-dev \
+            libxml2-utils \
+            lzop \
+            pngcrush \
+            rsync \
+            schedtool \
+            squashfs-tools \
+            unzip \
+            xsltproc \
+            zip \
+            zlib1g-dev
+
+
+      # --------------------------------------------------
+      # REPO
+      # --------------------------------------------------
+
+      - name: Install repo
+        run: |
+
+          mkdir -p "${HOME}/bin"
+
+          curl -L \
+            https://storage.googleapis.com/git-repo-downloads/repo \
+            -o "${HOME}/bin/repo"
+
+          chmod +x "${HOME}/bin/repo"
+
+          echo "${HOME}/bin" >> "${GITHUB_PATH}"
+
+
+      # --------------------------------------------------
+      # GIT
+      # --------------------------------------------------
+
+      - name: Configure git
+        run: |
+
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+          git config --global color.ui false
+
+
+      # --------------------------------------------------
+      # DISK CHECK
+      # --------------------------------------------------
+
+      - name: Check disk
+        run: |
+
+          df -h
+
+
+      # --------------------------------------------------
+      # SELECT RECOVERY
+      # --------------------------------------------------
+
+      - name: Select recovery source
+        run: |
+
+          mkdir -p "${GITHUB_WORKSPACE}/android"
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          case "${RECOVERY}" in
+
+            TWRP)
+
+              echo "Using TWRP"
+
+              repo init \
+                --depth=1 \
+                -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
+                -b twrp-12.1
+
+              ;;
+
+
+            OrangeFox)
+
+              echo "Using OrangeFox"
+
+              git clone \
+                --depth=1 \
+                --branch fox_12.1 \
+                https://gitlab.com/OrangeFox/sync.git \
+                orangefox-sync
+
+              ;;
+
+
+            SHARP)
+
+              echo "Using SHRP"
+
+              repo init \
+                --depth=1 \
+                -u https://github.com/SHRP/manifest.git \
+                -b android-12.1
+
+              ;;
+
+
+            PitchBlack)
+
+              echo "Using PitchBlack"
+
+              repo init \
+                --depth=1 \
+                -u https://github.com/PitchBlackRecoveryProject/manifest_pb.git \
+                -b android-12.1
+
+              ;;
+
+          esac
+
+
+      # --------------------------------------------------
+      # SYNC
+      # --------------------------------------------------
+
+      - name: Sync recovery source
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          if [ "${RECOVERY}" = "OrangeFox" ]; then
+
+            cd orangefox-sync
+
+            chmod +x orangefox_sync.sh
+
+            ./orangefox_sync.sh \
+              --branch 12.1 \
+              --path "${GITHUB_WORKSPACE}/android"
+
+          else
+
+            repo sync \
+              -c \
+              --no-clone-bundle \
+              --no-tags \
+              --optimized-fetch \
+              --prune \
+              --force-sync \
+              -j2
+
+          fi
+
+
+      # --------------------------------------------------
+      # DEVICE TREE
+      # --------------------------------------------------
+
+      - name: Clone RMX3660 device tree
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          mkdir -p device/realme
+
+          git clone \
+            --depth=1 \
+            --branch lineage-23.0 \
+            https://github.com/LineageOS/android_device_realme_luigi.git \
+            device/realme/luigi
+
+
+      # --------------------------------------------------
+      # COMMON TREE
+      # --------------------------------------------------
+
+      - name: Clone SM6375 common tree
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          mkdir -p device/realme
+
+          git clone \
+            --depth=1 \
+            --branch lineage-23.0 \
+            https://github.com/LineageOS/android_device_realme_sm6375-common.git \
+            device/realme/sm6375-common
+
+
+      # --------------------------------------------------
+      # KERNEL
+      # --------------------------------------------------
+
+      - name: Clone kernel
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          mkdir -p kernel/realme
+
+          git clone \
+            --depth=1 \
+            --branch lineage-23.0 \
+            https://github.com/LineageOS/android_kernel_realme_sm6375.git \
+            kernel/realme/sm6375
+
+
+      # --------------------------------------------------
+      # VENDOR
+      # --------------------------------------------------
+
+      - name: Clone Luigi vendor
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          mkdir -p vendor/realme
+
+          git clone \
+            --depth=1 \
+            https://github.com/TheMuppets/proprietary_vendor_realme_luigi.git \
+            vendor/realme/luigi
+
+
+      # --------------------------------------------------
+      # CHECK DEPENDENCIES
+      # --------------------------------------------------
+
+      - name: Read device dependencies
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          echo "=========================================="
+          echo "Device dependencies"
+          echo "=========================================="
+
+          cat device/realme/luigi/lineage.dependencies || true
+
+          echo
+          echo "=========================================="
+          echo "Common dependencies"
+          echo "=========================================="
+
+          cat device/realme/sm6375-common/lineage.dependencies || true
+
+
+      # --------------------------------------------------
+      # RECOVERY DEVICE CONFIG
+      # --------------------------------------------------
+
+      - name: Prepare recovery configuration
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          mkdir -p device/realme/luigi/recovery
+
+
+          cat > device/realme/luigi/recovery/recovery_config.mk <<'EOF'
+
+          # RMX3660 / LUIGI
+          # Shared recovery configuration
+
+          TW_THEME := portrait_hdpi
+
+          TW_MAX_BRIGHTNESS := 4095
+
+          TW_DEFAULT_BRIGHTNESS := 2048
+
+          TW_EXCLUDE_DEFAULT_USB_INIT := true
+
+          TW_INCLUDE_FASTBOOTD := true
+
+          TW_USE_TOOLBOX := true
+
+          TW_INCLUDE_NTFS_3G := true
+
+          TW_INCLUDE_FUSE_EXFAT := true
+
+          TW_INCLUDE_REPACKTOOLS := true
+
+          TW_INCLUDE_LIBRESETPROP := true
+
+          TW_NO_LEGACY_PROPS := true
+
+          TW_DEVICE_VERSION := RMX3660
+
+          EOF
+
+
+      # --------------------------------------------------
+      # DEVICE INFORMATION
+      # --------------------------------------------------
+
+      - name: Display configuration
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          echo
+          echo "=========================================="
+          echo " RMX3660 RECOVERY BUILD"
+          echo "=========================================="
+          echo "Recovery : ${RECOVERY}"
+          echo "Target   : ${TARGET}"
+          echo "Device   : ${DEVICE}"
+          echo "Codename : luigi"
+          echo "Platform : SM6375"
+          echo "=========================================="
+
+          echo
+          echo "Board configuration:"
+
+          grep -R \
+            "BOARD_BOOT_HEADER_VERSION" \
+            device/realme/sm6375-common \
+            device/realme/luigi \
+            2>/dev/null || true
+
+          echo
+          echo "Kernel configuration:"
+
+          grep -R \
+            "TARGET_KERNEL_CONFIG" \
+            device/realme/sm6375-common \
+            device/realme/luigi \
+            2>/dev/null || true
+
+
+      # --------------------------------------------------
+      # CCACHE
+      # --------------------------------------------------
+
+      - name: Setup ccache
+        run: |
+
+          mkdir -p "${HOME}/.ccache"
+
+          ccache -M 20G
+
+          echo "USE_CCACHE=1" >> "${GITHUB_ENV}"
+
+          echo "CCACHE_EXEC=$(command -v ccache)" >> "${GITHUB_ENV}"
+
+
+      # --------------------------------------------------
+      # BUILD
+      # --------------------------------------------------
+
+      - name: Build recovery
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          export ALLOW_MISSING_DEPENDENCIES=true
+
+          export BUILD_USERNAME=github
+
+          export BUILD_HOST=github-actions
+
+          source build/envsetup.sh
+
+
+          case "${RECOVERY}" in
+
+            TWRP)
+
+              echo "Building TWRP"
+
+              lunch twrp_luigi-eng
+
+              if [ "${TARGET}" = "vendor_boot" ]; then
+                mka vendorbootimage
+              else
+                mka recoveryimage
+              fi
+
+              ;;
+
+
+            OrangeFox)
+
+              echo "Building OrangeFox"
+
+              lunch twrp_luigi-eng
+
+              if [ "${TARGET}" = "vendor_boot" ]; then
+                mka vendorbootimage
+              else
+                mka recoveryimage
+              fi
+
+              ;;
+
+
+            SHARP)
+
+              echo "Building SHRP"
+
+              lunch shrp_luigi-eng
+
+              if [ "${TARGET}" = "vendor_boot" ]; then
+                mka vendorbootimage
+              else
+                mka recoveryimage
+              fi
+
+              ;;
+
+
+            PitchBlack)
+
+              echo "Building PBRP"
+
+              lunch pb_luigi-eng
+
+              mka pbrp
+
+              ;;
+
+          esac
+
+
+      # --------------------------------------------------
+      # FIND OUTPUT
+      # --------------------------------------------------
+
+      - name: Find output
+        if: always()
+        run: |
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+          echo "=========================================="
+          echo "Generated images"
+          echo "=========================================="
+
+          find out/target/product/luigi \
+            -type f \
+            \( \
+              -name "vendor_boot.img" \
+              -o -name "recovery.img" \
+              -o -name "*recovery*.img" \
+            \) \
+            -print 2>/dev/null || true
+
+
+      # --------------------------------------------------
+      # PACKAGE
+      # --------------------------------------------------
+
+      - name: Package output
+        if: success()
+        run: |
+
+          mkdir -p "${GITHUB_WORKSPACE}/output"
+
+          cd "${GITHUB_WORKSPACE}/android"
+
+
+          find out/target/product/luigi \
+            -type f \
+            \( \
+              -name "vendor_boot.img" \
+              -o -name "recovery.img" \
+              -o -name "*recovery*.img" \
+            \) \
+            -exec cp {} "${GITHUB_WORKSPACE}/output/" \;
+
+
+          cat > "${GITHUB_WORKSPACE}/output/build-info.txt" <<EOF
+          Device: Realme 10 Pro
+          Model: RMX3660
+          Codename: luigi
+          Platform: SM6375
+          Recovery: ${RECOVERY}
+          Target: ${TARGET}
+          Device tree branch: lineage-23.0
+          Common tree branch: lineage-23.0
+          Kernel branch: lineage-23.0
+          EOF
+
+
+      # --------------------------------------------------
+      # UPLOAD
+      # --------------------------------------------------
+
+      - name: Upload recovery
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RMX3660-${{ inputs.recovery }}-${{ inputs.target }}
+          path: output/
+          if-no-files-found: error
+
+
+      # --------------------------------------------------
+      # CCACHE STATS
+      # --------------------------------------------------
+
+      - name: ccache statistics
+        if: always()
+        run: |
+
+          ccache -s || true
