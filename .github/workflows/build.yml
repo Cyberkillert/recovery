@@ -1,62 +1,34 @@
-name: RMX3660 Recovery Builder
+name: Build TWRP Ramdisk - RMX3660
 
 on:
   workflow_dispatch:
-    inputs:
-
-      recovery:
-        description: "Select recovery"
-        required: true
-        type: choice
-        default: TWRP
-        options:
-          - TWRP
-          - OrangeFox
-          - SHARP
-          - PitchBlack
-
-      target:
-        description: "Image target"
-        required: true
-        type: choice
-        default: vendor_boot
-        options:
-          - vendor_boot
-          - recovery
-
-      clean:
-        description: "Clean build"
-        required: true
-        type: boolean
-        default: true
 
 jobs:
 
   build:
-    name: ${{ inputs.recovery }} - RMX3660
+
+    name: TWRP Ramdisk - Realme 10 Pro
     runs-on: ubuntu-24.04
 
     env:
       DEVICE: luigi
       DEVICE_PATH: device/realme/luigi
-      COMMON_PATH: device/realme/sm6375-common
-      KERNEL_PATH: kernel/realme/sm6375
-      RECOVERY: ${{ inputs.recovery }}
-      TARGET: ${{ inputs.target }}
 
     steps:
 
-      # --------------------------------------------------
-      # CHECKOUT
-      # --------------------------------------------------
+      # ============================================
+      # Checkout builder
+      # ============================================
 
-      - name: Checkout builder
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
 
-      # --------------------------------------------------
-      # DEPENDENCIES
-      # --------------------------------------------------
+      # ============================================
+      # Install dependencies
+      # ============================================
 
       - name: Install dependencies
         run: |
@@ -86,10 +58,9 @@ jobs:
             libncurses-dev \
             libssl-dev \
             libxml2-utils \
+            lz4 \
             lzop \
-            pngcrush \
             rsync \
-            schedtool \
             squashfs-tools \
             unzip \
             xsltproc \
@@ -97,9 +68,9 @@ jobs:
             zlib1g-dev
 
 
-      # --------------------------------------------------
-      # REPO
-      # --------------------------------------------------
+      # ============================================
+      # Install repo
+      # ============================================
 
       - name: Install repo
         run: |
@@ -115,476 +86,375 @@ jobs:
           echo "${HOME}/bin" >> "${GITHUB_PATH}"
 
 
-      # --------------------------------------------------
-      # GIT
-      # --------------------------------------------------
+      # ============================================
+      # Git configuration
+      # ============================================
 
       - name: Configure git
         run: |
 
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          git config --global user.name \
+            "GitHub Actions"
 
-          git config --global color.ui false
+          git config --global user.email \
+            "actions@github.com"
 
 
-      # --------------------------------------------------
-      # DISK CHECK
-      # --------------------------------------------------
+      # ============================================
+      # Initialize TWRP
+      # ============================================
 
-      - name: Check disk
+      - name: Initialize TWRP
         run: |
 
-          df -h
+          mkdir -p android
 
+          cd android
 
-      # --------------------------------------------------
-      # SELECT RECOVERY
-      # --------------------------------------------------
-
-      - name: Select recovery source
-        run: |
-
-          mkdir -p "${GITHUB_WORKSPACE}/android"
-
-          cd "${GITHUB_WORKSPACE}/android"
-
-          case "${RECOVERY}" in
-
-            TWRP)
-
-              echo "Using TWRP"
-
-              repo init \
-                --depth=1 \
-                -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
-                -b twrp-12.1
-
-              ;;
-
-
-            OrangeFox)
-
-              echo "Using OrangeFox"
-
-              git clone \
-                --depth=1 \
-                --branch fox_12.1 \
-                https://gitlab.com/OrangeFox/sync.git \
-                orangefox-sync
-
-              ;;
-
-
-            SHARP)
-
-              echo "Using SHRP"
-
-              repo init \
-                --depth=1 \
-                -u https://github.com/SHRP/manifest.git \
-                -b android-12.1
-
-              ;;
-
-
-            PitchBlack)
-
-              echo "Using PitchBlack"
-
-              repo init \
-                --depth=1 \
-                -u https://github.com/PitchBlackRecoveryProject/manifest_pb.git \
-                -b android-12.1
-
-              ;;
-
-          esac
-
-
-      # --------------------------------------------------
-      # SYNC
-      # --------------------------------------------------
-
-      - name: Sync recovery source
-        run: |
-
-          cd "${GITHUB_WORKSPACE}/android"
-
-          if [ "${RECOVERY}" = "OrangeFox" ]; then
-
-            cd orangefox-sync
-
-            chmod +x orangefox_sync.sh
-
-            ./orangefox_sync.sh \
-              --branch 12.1 \
-              --path "${GITHUB_WORKSPACE}/android"
-
-          else
-
-            repo sync \
-              -c \
-              --no-clone-bundle \
-              --no-tags \
-              --optimized-fetch \
-              --prune \
-              --force-sync \
-              -j2
-
-          fi
-
-
-      # --------------------------------------------------
-      # DEVICE TREE
-      # --------------------------------------------------
-
-      - name: Clone RMX3660 device tree
-        run: |
-
-          cd "${GITHUB_WORKSPACE}/android"
-
-          mkdir -p device/realme
-
-          git clone \
+          repo init \
             --depth=1 \
-            --branch lineage-23.0 \
-            https://github.com/LineageOS/android_device_realme_luigi.git \
-            device/realme/luigi
+            -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
+            -b twrp-12.1
 
 
-      # --------------------------------------------------
-      # COMMON TREE
-      # --------------------------------------------------
+      # ============================================
+      # Sync TWRP
+      # ============================================
 
-      - name: Clone SM6375 common tree
+      - name: Sync TWRP
         run: |
 
-          cd "${GITHUB_WORKSPACE}/android"
+          cd android
 
-          mkdir -p device/realme
+          repo sync \
+            -c \
+            --force-sync \
+            --no-clone-bundle \
+            --no-tags \
+            --optimized-fetch \
+            --prune \
+            -j2
 
-          git clone \
-            --depth=1 \
-            --branch lineage-23.0 \
-            https://github.com/LineageOS/android_device_realme_sm6375-common.git \
-            device/realme/sm6375-common
 
+      # ============================================
+      # Create device directory
+      # ============================================
 
-      # --------------------------------------------------
-      # KERNEL
-      # --------------------------------------------------
-
-      - name: Clone kernel
+      - name: Create TWRP device tree
         run: |
 
-          cd "${GITHUB_WORKSPACE}/android"
-
-          mkdir -p kernel/realme
-
-          git clone \
-            --depth=1 \
-            --branch lineage-23.0 \
-            https://github.com/LineageOS/android_kernel_realme_sm6375.git \
-            kernel/realme/sm6375
+          mkdir -p \
+            android/device/realme/luigi/prebuilt
 
 
-      # --------------------------------------------------
-      # VENDOR
-      # --------------------------------------------------
+      # ============================================
+      # Install TWRP device files
+      # ============================================
 
-      - name: Clone Luigi vendor
+      - name: Install TWRP configuration
         run: |
 
-          cd "${GITHUB_WORKSPACE}/android"
+          cp \
+            recovery/twrp/luigi/AndroidProducts.mk \
+            android/device/realme/luigi/
 
-          mkdir -p vendor/realme
+          cp \
+            recovery/twrp/luigi/twrp_luigi.mk \
+            android/device/realme/luigi/
 
-          git clone \
-            --depth=1 \
-            https://github.com/TheMuppets/proprietary_vendor_realme_luigi.git \
-            vendor/realme/luigi
+          cp \
+            recovery/twrp/luigi/BoardConfig.mk \
+            android/device/realme/luigi/
+
+          cp \
+            recovery/twrp/luigi/device.mk \
+            android/device/realme/luigi/
 
 
-      # --------------------------------------------------
-      # CHECK DEPENDENCIES
-      # --------------------------------------------------
+      # ============================================
+      # Install stock kernel
+      # ============================================
 
-      - name: Read device dependencies
+      - name: Install stock kernel
         run: |
 
-          cd "${GITHUB_WORKSPACE}/android"
+          test -f prebuilt/kernel
 
-          echo "=========================================="
-          echo "Device dependencies"
-          echo "=========================================="
+          cp \
+            prebuilt/kernel \
+            android/device/realme/luigi/prebuilt/kernel
 
-          cat device/realme/luigi/lineage.dependencies || true
+          chmod 644 \
+            android/device/realme/luigi/prebuilt/kernel
 
-          echo
-          echo "=========================================="
-          echo "Common dependencies"
-          echo "=========================================="
-
-          cat device/realme/sm6375-common/lineage.dependencies || true
+          ls -lh \
+            android/device/realme/luigi/prebuilt/kernel
 
 
-      # --------------------------------------------------
-      # RECOVERY DEVICE CONFIG
-      # --------------------------------------------------
+      # ============================================
+      # Create basic recovery fstab
+      # ============================================
 
-      - name: Prepare recovery configuration
+      - name: Create recovery fstab
         run: |
 
-          cd "${GITHUB_WORKSPACE}/android"
+          cat > android/device/realme/luigi/recovery.fstab <<'EOF'
 
-          mkdir -p device/realme/luigi/recovery
+          /dev/block/bootdevice/by-name/boot \
+              /boot \
+              emmc \
+              flags=slotselect
 
+          /dev/block/bootdevice/by-name/misc \
+              /misc \
+              emmc
 
-          cat > device/realme/luigi/recovery/recovery_config.mk <<'EOF'
-
-          # RMX3660 / LUIGI
-          # Shared recovery configuration
-
-          TW_THEME := portrait_hdpi
-
-          TW_MAX_BRIGHTNESS := 4095
-
-          TW_DEFAULT_BRIGHTNESS := 2048
-
-          TW_EXCLUDE_DEFAULT_USB_INIT := true
-
-          TW_INCLUDE_FASTBOOTD := true
-
-          TW_USE_TOOLBOX := true
-
-          TW_INCLUDE_NTFS_3G := true
-
-          TW_INCLUDE_FUSE_EXFAT := true
-
-          TW_INCLUDE_REPACKTOOLS := true
-
-          TW_INCLUDE_LIBRESETPROP := true
-
-          TW_NO_LEGACY_PROPS := true
-
-          TW_DEVICE_VERSION := RMX3660
+          /dev/block/bootdevice/by-name/dtbo \
+              /dtbo \
+              emmc
 
           EOF
 
 
-      # --------------------------------------------------
-      # DEVICE INFORMATION
-      # --------------------------------------------------
+      # ============================================
+      # Verify device tree
+      # ============================================
 
-      - name: Display configuration
+      - name: Verify configuration
         run: |
 
-          cd "${GITHUB_WORKSPACE}/android"
+          cd android
+
+          echo "========================================"
+          echo "RMX3660 TWRP CONFIGURATION"
+          echo "========================================"
+
+          ls -lah device/realme/luigi
 
           echo
-          echo "=========================================="
-          echo " RMX3660 RECOVERY BUILD"
-          echo "=========================================="
-          echo "Recovery : ${RECOVERY}"
-          echo "Target   : ${TARGET}"
-          echo "Device   : ${DEVICE}"
-          echo "Codename : luigi"
-          echo "Platform : SM6375"
-          echo "=========================================="
+          echo "AndroidProducts.mk:"
+          cat device/realme/luigi/AndroidProducts.mk
 
           echo
-          echo "Board configuration:"
-
-          grep -R \
-            "BOARD_BOOT_HEADER_VERSION" \
-            device/realme/sm6375-common \
-            device/realme/luigi \
-            2>/dev/null || true
+          echo "twrp_luigi.mk:"
+          cat device/realme/luigi/twrp_luigi.mk
 
           echo
-          echo "Kernel configuration:"
-
-          grep -R \
-            "TARGET_KERNEL_CONFIG" \
-            device/realme/sm6375-common \
-            device/realme/luigi \
-            2>/dev/null || true
+          echo "Kernel:"
+          ls -lh device/realme/luigi/prebuilt/kernel
 
 
-      # --------------------------------------------------
-      # CCACHE
-      # --------------------------------------------------
+      # ============================================
+      # Setup build environment
+      # ============================================
 
-      - name: Setup ccache
+      - name: Setup build environment
         run: |
 
-          mkdir -p "${HOME}/.ccache"
-
-          ccache -M 20G
-
-          echo "USE_CCACHE=1" >> "${GITHUB_ENV}"
-
-          echo "CCACHE_EXEC=$(command -v ccache)" >> "${GITHUB_ENV}"
-
-
-      # --------------------------------------------------
-      # BUILD
-      # --------------------------------------------------
-
-      - name: Build recovery
-        run: |
-
-          cd "${GITHUB_WORKSPACE}/android"
+          cd android
 
           export ALLOW_MISSING_DEPENDENCIES=true
-
-          export BUILD_USERNAME=github
-
-          export BUILD_HOST=github-actions
 
           source build/envsetup.sh
 
 
-          case "${RECOVERY}" in
+      # ============================================
+      # Lunch
+      # ============================================
 
-            TWRP)
-
-              echo "Building TWRP"
-
-              lunch twrp_luigi-eng
-
-              if [ "${TARGET}" = "vendor_boot" ]; then
-                mka vendorbootimage
-              else
-                mka recoveryimage
-              fi
-
-              ;;
-
-
-            OrangeFox)
-
-              echo "Building OrangeFox"
-
-              lunch twrp_luigi-eng
-
-              if [ "${TARGET}" = "vendor_boot" ]; then
-                mka vendorbootimage
-              else
-                mka recoveryimage
-              fi
-
-              ;;
-
-
-            SHARP)
-
-              echo "Building SHRP"
-
-              lunch shrp_luigi-eng
-
-              if [ "${TARGET}" = "vendor_boot" ]; then
-                mka vendorbootimage
-              else
-                mka recoveryimage
-              fi
-
-              ;;
-
-
-            PitchBlack)
-
-              echo "Building PBRP"
-
-              lunch pb_luigi-eng
-
-              mka pbrp
-
-              ;;
-
-          esac
-
-
-      # --------------------------------------------------
-      # FIND OUTPUT
-      # --------------------------------------------------
-
-      - name: Find output
-        if: always()
+      - name: Lunch TWRP
         run: |
 
-          cd "${GITHUB_WORKSPACE}/android"
+          cd android
 
-          echo "=========================================="
-          echo "Generated images"
-          echo "=========================================="
+          export ALLOW_MISSING_DEPENDENCIES=true
+
+          source build/envsetup.sh
+
+          lunch twrp_luigi-eng
+
+
+      # ============================================
+      # Build TWRP boot image
+      # ============================================
+
+      - name: Build TWRP boot image
+        run: |
+
+          cd android
+
+          export ALLOW_MISSING_DEPENDENCIES=true
+
+          source build/envsetup.sh
+
+          lunch twrp_luigi-eng
+
+          mka bootimage
+
+
+      # ============================================
+      # Locate generated boot image
+      # ============================================
+
+      - name: Locate TWRP boot image
+        run: |
+
+          cd android
 
           find out/target/product/luigi \
             -type f \
-            \( \
-              -name "vendor_boot.img" \
-              -o -name "recovery.img" \
-              -o -name "*recovery*.img" \
-            \) \
-            -print 2>/dev/null || true
+            -name "boot.img" \
+            -print
 
 
-      # --------------------------------------------------
-      # PACKAGE
-      # --------------------------------------------------
+      # ============================================
+      # Extract ramdisk
+      # ============================================
 
-      - name: Package output
-        if: success()
+      - name: Extract TWRP ramdisk
         run: |
 
-          mkdir -p "${GITHUB_WORKSPACE}/output"
+          mkdir -p output
 
-          cd "${GITHUB_WORKSPACE}/android"
+          BOOT="android/out/target/product/luigi/boot.img"
+
+          test -f "$BOOT"
+
+          echo "Generated TWRP boot image:"
+          ls -lh "$BOOT"
+
+          mkdir -p ramdisk_extract
+
+          python3 system/tools/mkbootimg/unpack_bootimg.py \
+            --boot_img "$BOOT" \
+            --out ramdisk_extract
+
+          echo
+          echo "Unpacked files:"
+          ls -lah ramdisk_extract
 
 
-          find out/target/product/luigi \
+      # ============================================
+      # Locate ramdisk
+      # ============================================
+
+      - name: Locate generated ramdisk
+        run: |
+
+          find ramdisk_extract \
             -type f \
-            \( \
-              -name "vendor_boot.img" \
-              -o -name "recovery.img" \
-              -o -name "*recovery*.img" \
-            \) \
-            -exec cp {} "${GITHUB_WORKSPACE}/output/" \;
+            -name "*ramdisk*" \
+            -print
 
 
-          cat > "${GITHUB_WORKSPACE}/output/build-info.txt" <<EOF
+      # ============================================
+      # Create ramdisk.cpio
+      # ============================================
+
+      - name: Create ramdisk.cpio
+        run: |
+
+          cd ramdisk_extract
+
+          if [ -d "ramdisk" ]; then
+
+            cd ramdisk
+
+            find . -print0 | \
+              cpio --null \
+              -o \
+              -H newc \
+              > "${GITHUB_WORKSPACE}/output/ramdisk.cpio"
+
+          elif [ -f "ramdisk" ]; then
+
+            cp \
+              ramdisk \
+              "${GITHUB_WORKSPACE}/output/ramdisk.cpio"
+
+          elif [ -f "ramdisk.cpio" ]; then
+
+            cp \
+              ramdisk.cpio \
+              "${GITHUB_WORKSPACE}/output/ramdisk.cpio"
+
+          else
+
+            echo "ERROR: TWRP ramdisk was not found."
+
+            exit 1
+
+          fi
+
+
+      # ============================================
+      # Verify ramdisk
+      # ============================================
+
+      - name: Verify ramdisk
+        run: |
+
+          test -f output/ramdisk.cpio
+
+          echo
+          echo "========================================"
+          echo "TWRP RAMDISK"
+          echo "========================================"
+
+          ls -lh output/ramdisk.cpio
+
+          file output/ramdisk.cpio
+
+          echo
+          echo "CPIO header:"
+
+          od \
+            -An \
+            -tx1 \
+            -N6 \
+            output/ramdisk.cpio
+
+
+      # ============================================
+      # Build information
+      # ============================================
+
+      - name: Create build information
+        run: |
+
+          cat > output/build-info.txt <<'EOF'
           Device: Realme 10 Pro
           Model: RMX3660
           Codename: luigi
-          Platform: SM6375
-          Recovery: ${RECOVERY}
-          Target: ${TARGET}
-          Device tree branch: lineage-23.0
-          Common tree branch: lineage-23.0
-          Kernel branch: lineage-23.0
+
+          Recovery: TWRP
+          Output: ramdisk.cpio
+
+          Kernel:
+          Stock RMX3660 kernel
+
+          TWRP source:
+          minimal-manifest-twrp/platform_manifest_twrp_aosp
+
+          Branch:
+          twrp-12.1
+
+          Data decryption:
+          Disabled
+
+          IMPORTANT:
+          This file contains the TWRP ramdisk only.
+          It is not a complete boot.img.
           EOF
 
 
-      # --------------------------------------------------
-      # UPLOAD
-      # --------------------------------------------------
+      # ============================================
+      # Upload artifact
+      # ============================================
 
-      - name: Upload recovery
-        if: success()
+      - name: Upload TWRP ramdisk
         uses: actions/upload-artifact@v4
         with:
-          name: RMX3660-${{ inputs.recovery }}-${{ inputs.target }}
+          name: RMX3660-TWRP-Ramdisk
           path: output/
           if-no-files-found: error
-
-
-      # --------------------------------------------------
-      # CCACHE STATS
-      # --------------------------------------------------
-
-      - name: ccache statistics
-        if: always()
-        run: |
-
-          ccache -s || true
