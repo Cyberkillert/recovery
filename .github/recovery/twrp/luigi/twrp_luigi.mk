@@ -1,9 +1,4 @@
-#
-# TWRP for Realme 10 Pro (RMX3660)
-# Codename: luigi
-#
-
-$(call inherit-product, device/realme/luigi/device.mk)
+LOCAL_PATH := device/realme/luigi
 
 PRODUCT_DEVICE := luigi
 PRODUCT_NAME := twrp_luigi
@@ -11,4 +6,9 @@ PRODUCT_BRAND := realme
 PRODUCT_MODEL := RMX3660
 PRODUCT_MANUFACTURER := realme
 
-PRODUCT_SYSTEM_NAME := luigi
+PRODUCT_SHIPPING_API_LEVEL := 35
+
+TW_INCLUDE_FASTBOOTD := true
+
+TW_NO_DECRYPT := true
+TW_INCLUDE_CRYPTO := false
